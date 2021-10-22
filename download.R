@@ -6,7 +6,7 @@ library(curl)
 library(data.table)
 library(cowplot)
 
-system('mkdir ./data/')
+# system('mkdir ./data/')
 
 pdtools::list_PDGs('Escherichia_coli_Shigella')
 
@@ -100,7 +100,7 @@ p1 <-
   tally()  %>%
   ggplot(aes(x=STX, y=n, fill=STX)) + 
   geom_col(position = position_dodge(), color='black', show.legend = F) +
-  geom_text(aes(label=scales::comma(n, accuracy = 1), group=STX),color='black', nudge_y = 1000)+ 
+  geom_text(aes(label=scales::comma(n, accuracy = 1), group=STX),color='black', nudge_y = 1500)+ 
   facet_wrap(~epi_type, ncol = 1, scales = 'free_x') +
   theme_cowplot()+
   theme(panel.grid.major = element_line(color='grey'), 
@@ -181,7 +181,7 @@ ass_sum <- ass_sum %>% filter(asm_acc %in% stx_meta$asm_acc)
 
 # ass_sum$ftp_path
 
-system('mkdir ./data/genomes/')
+# system('mkdir ./data/genomes/')
 
 
 
