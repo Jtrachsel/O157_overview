@@ -3,6 +3,7 @@ library(tidyverse)
 library(data.table)
 library(cowplot)
 library(usethis)
+library(scales)
 
 # system('mkdir ./data/')
 use_directory('./data/')
@@ -85,18 +86,52 @@ ass_sum <- fread('./data/assembly_summary.txt', quote = '') %>%
 # meta <- AMR %>% left_join(clusts) 
 
 # detect broad STX types
+# meta <- 
+#   meta %>%
+#   mutate(STX=case_when(
+#   grepl('stxA', virulence_genotypes) & grepl('stxB', virulence_genotypes)  ~ 'both', 
+#   grepl('stxA', virulence_genotypes) ~ 'stxA', 
+#   grepl('stxB', virulence_genotypes) ~ 'stxB', 
+#   TRUE ~ 'none'
+# ))
+
+any(is.na(meta$virulence_genotypes))
+any(meta$virulence_genotypes == 'NULL')
+any(is.null(meta$virulence_genotypes))
+
+# remove genomes that havent had virulence genes detected
+meta <- meta %>% 
+  filter(virulence_genotypes != 'NULL') %>% 
+  filter(epi_type != 'NULL')
+
+
+
+### The above makes sure the subunits are both tehre, but doesnt actually 
+# differentiate the different types of stx, ie 1 and 2
+
 meta <- 
   meta %>%
-  mutate(STX=case_when(
-  grepl('stxA', virulence_genotypes) & grepl('stxB', virulence_genotypes)  ~ 'both', 
-  grepl('stxA', virulence_genotypes) ~ 'stxA', 
-  grepl('stxB', virulence_genotypes) ~ 'stxB', 
-  TRUE ~ 'none'
-))
+  mutate(
+    STX=case_when(
+    grepl('stxA1', virulence_genotypes) &
+      grepl('stxB1', virulence_genotypes) &
+      grepl('stxA2', virulence_genotypes) &
+      grepl('stxB2', virulence_genotypes)  ~ 'Both',
+    grepl('stxA1', virulence_genotypes) &
+      grepl('stxB1', virulence_genotypes)  ~ 'STX1', 
+    grepl('stxA2', virulence_genotypes) &
+      grepl('stxB2', virulence_genotypes)  ~ 'STX2', 
+    grepl('stxA1', virulence_genotypes) ~ 'one subunit',
+    grepl('stxB1', virulence_genotypes) ~ 'one subunit',
+    grepl('stxA2', virulence_genotypes) ~ 'one subunit',
+    grepl('stxB2', virulence_genotypes) ~ 'one subunit',
+    TRUE ~ 'None'
+  ),
+    STX=factor(STX, levels = c('None', 'Both', 'STX1', 'STX2')))
 
 
 # within PDS accessions there is some diversity in the presence of STX genes
-
+# This only looks at the presence of both subunits not stx types
 meta %>% 
   group_by(PDS_acc, STX) %>%
   tally() %>% 
@@ -125,7 +160,43 @@ meta %>%
   ggplot(aes(x=vir, y=n)) + geom_col() + facet_wrap(~type, scales = 'free')
 
          
-##
+###
+# stx type for each genome
+
+stx_types <- 
+  meta %>% 
+  select(target_acc, virulence_genotypes, STX) %>%
+  filter(grepl('stx', virulence_genotypes)) %>%
+  mutate(vir = gsub('\"','',virulence_genotypes)) %>%
+  select(-virulence_genotypes) %>%
+  separate_rows(vir, sep = ',') %>%
+  filter(grepl('stx', vir)) %>% 
+  filter(!grepl('=PARTIAL', vir)) %>% 
+  filter(!grepl('=MISTRANSLATION', vir)) %>% 
+  # mutate(vir=ifelse(grepl('=HMM', vir), 'stxHMM', vir)) %>% 
+  filter(!grepl('=HMM', vir)) %>% 
+  group_by(target_acc, STX) %>% 
+  summarise(stx_type=paste(vir, collapse = '_'))
+
+
+look <- 
+  stx_types %>% 
+  ungroup() %>% 
+  mutate(type_lump=fct_lump_n(f = stx_type, n = 15))
+
+
+look %>%
+  group_by(type_lump, STX) %>% tally() %>%
+  arrange((n)) %>% 
+  ungroup() %>% 
+  mutate(type_lump=fct_infreq(type_lump)) %>% 
+  #filter(type_lump != 'Other') %>% 
+  ggplot(aes(y=type_lump, x= n)) +
+  geom_col(aes(fill=STX))
+
+
+
+###
 
 year_dat <- meta %>% extract_earliest_year()
 country_dat <- meta %>% extract_country()
@@ -139,90 +210,104 @@ meta <- meta %>%
   left_join(host_dat) %>% 
   left_join(agency_dat)
 
-#### probably branch this off?
+#### All worldwide isolates
 
-PDD_meta <- 
-  meta %>% 
-  filter(grepl('USA|Canada|Mexico', country, ignore.case = T)) %>%
-  filter(epi_type != 'NULL') %>%
-  filter( Year > 2010)
-#####
-
-
-
-genomes_per_year_North_America <- 
-  PDD_meta %>%  
-  count(Year, epi_type, name = 'tot_epi_yr')
+# genomes_per_year_North_America <- 
+#   meta %>%  
+#   count(Year, epi_type, name = 'tot_epi_yr')
   
 
+# color blind palettes from:
+# https://www.datanovia.com/en/blog/ggplot-colors-best-tricks-you-will-love/
+
+cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
   
+cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
 
 p1 <- 
-  PDD_meta %>%
+  meta %>%
+  filter(STX != 'one subunit') %>% 
   group_by(STX, epi_type) %>%
   tally()  %>%
   ggplot(aes(x=STX, y=n, fill=STX)) + 
   geom_col(position = position_dodge(), color='black', show.legend = F) +
-  geom_text(aes(label=scales::comma(n, accuracy = 1), group=STX),color='black', nudge_y = 1500)+ 
+  geom_text(aes(label=scales::comma(n, accuracy = 1), group=STX),color='black', nudge_y = 3500)+ 
   facet_wrap(~epi_type, ncol = 1, scales = 'free_x') +
   theme_cowplot()+
+  scale_fill_manual(values = cbp1)+
   theme(panel.grid.major = element_line(color='grey'), 
         panel.border = element_rect(color='black'), 
         axis.title = element_text(size=16)) +
   ylab('number of genomes') + 
   xlab('stx gene presence')
 
+p1
 
 
 p2 <- 
-  PDD_meta %>%
+  meta %>%
+  filter(STX != 'one subunit') %>% 
+  filter(Year > 2011) %>% 
   group_by(STX, Year, epi_type) %>%
   tally() %>% 
   left_join(genomes_per_year_North_America) %>%
   mutate(perc_epi_yr = (n / tot_epi_yr)*100 ) %>% 
   filter(epi_type != 'NULL') %>% 
   ggplot(aes(x=Year, y=perc_epi_yr, color=STX)) + 
-  geom_line(size=1)+
-  geom_point(aes(fill=STX), color='white',size=3, shape=21, stroke=1.25) +
+  geom_line(size=1, )+
+  geom_point(aes(fill=STX, shape=STX), color='white',size=3,stroke=1.25) +
   facet_wrap(~ epi_type, ncol = 1, scales = 'free_x') + 
   theme_cowplot() + 
+  scale_shape_manual(values=c(None=21,Both=22, STX1=25, STX2=24))+
+  scale_fill_manual(values = cbp1)+
+  scale_color_manual(values = cbp1)+
   theme(panel.grid.major = element_line(color='grey'), 
         panel.border = element_rect(color='black'), 
         axis.title = element_text(size=16)) + 
+  scale_x_continuous(breaks= pretty_breaks())+
+  scale_y_continuous(breaks= pretty_breaks())+
+  
   ylab('percent isolates per year') #+ 
 
 
-p1
+
+
 p2
 
 plot_grid(p1, p2, 
           labels = c('A', 'B'),
           rel_widths = c(1,2) ,
           label_size = 16,
-          nrow = 1)
+          nrow = 1) + 
+  ggtitle('stx toxin presence across all E. coli worldwide')
 
-stx_meta <- PDD_meta %>% filter(STX == 'both')
 
 
-stx_meta %>%
-  group_by(Year, epi_type) %>%
-  tally() %>%
-  ggplot(aes(x=Year, y=n, color=epi_type)) +
-  geom_point() +
-  geom_line() + 
-  theme_cowplot()+
-  theme(panel.grid= element_line(color='grey'), 
-        panel.border = element_rect(color='black'), 
-        axis.title = element_text(size=16)) + 
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) + 
-  ggtitle('genomes containing stxA and stxB')
+
+stx_meta <- meta %>% filter(STX %in% c('Both', 'STX1', 'STX2'))
+
+
+# stx_meta %>%
+#   group_by(Year, epi_type, STX) %>%
+#   tally() %>%
+#   ggplot(aes(x=Year, y=n, color=epi_type)) +
+#   geom_point() +
+#   geom_line() + 
+#   theme_cowplot()+
+#   theme(panel.grid= element_line(color='grey'), 
+#         panel.border = element_rect(color='black'), 
+#         axis.title = element_text(size=16)) + 
+#   scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) + 
+#   ggtitle('genomes containing stx1, stx2, or both')
 
 
 stx_meta %>% write_tsv('./data/North_America_stx_metadata.tsv')
 
 
-PDD_meta %>%
+meta %>%
   filter(STX == 'both') %>%
   filter(grepl('USA|Canada|Mexico', country, ignore.case = T)) %>%
   count(serovar) %>% 
@@ -230,7 +315,7 @@ PDD_meta %>%
 
 
 O157_PDSs <- 
-  PDD_meta %>%
+  meta %>%
   filter(grepl('O157', serovar)) %>%
   pull(PDS_acc) %>%
   unique()

@@ -1,0 +1,1 @@
+raxmlHPC-PTHREADS-AVX -m GTRGAMMA -f a -n sumpan_core -s ./sumpan/MSA/core_genome_alignment.aln -T 40 -x 7 -N autoMRE -p 7

@@ -1,0 +1,71 @@
+
+
+# downloads
+cat North_America_stx.ftp_paths | parallel -j 2 'wget {}'
+RENAME HERE
+
+# then simplify the filenames to be only asm accession
+for x in *.fna; do mv $x "${x%%_[A-Z]*}".fna; done
+
+# remove guided contigs, (duplications of some genes, will lose some gene content)
+remove_guided_contigs(){
+
+     BASENAME="${1%.fna}"
+     cat $1 |grep '>'|grep 'guided' |sed 's/>//' > "${BASENAME}".badnames
+     filterbyname.sh in=$1 names="${BASENAME}".badnames out="$BASENAME"_tmp.fasta include=F
+     mv "$BASENAME"_tmp.fasta $1
+     rm "$BASENAME".badnames
+}
+
+export -f remove_guided_contigs
+
+
+parallel 'remove_guided_contigs {}' ::: *fna
+
+
+# then serotype
+# conda activate ectyper
+
+ectyper -i ./data/genomes/ -o ./data/serotypes -c 40
+
+# then move all O157 to a new folder
+
+mkdir ./data/genomes/O157
+while read line; do mv $line ./O157/; done <O157_genomes.txt
+cd O157/
+cd ..
+mkdir non_O157
+mv *fna ./non_O157/
+
+#copy in infection genomes
+
+
+
+pangenome
+
+#generate ppanggolin file
+        The first column contains a unique organism name
+        The second column the path to the associated FASTA file
+        Circular contig identifiers are indicated in the following columns
+        Each line represents an organism
+# SEE R SCRIPT THAT GENERATES PPANGGOLIN FILE
+
+ppanggolin should be run from base project directory
+
+NEED ORIGINAL PPANGGOLIN COMMAND
+ppanggolin panrgp --fasta FILE -o pan -c 60
+
+ppanggolin fasta -p pangenome.h5 --projection
+
+
+ppanggolin msa -p pangenome.h5 
+ppanggolin fasta -o ./pan99/fasta_outputs -p ./pan/pangenome.h5 --prot_families all --regions all --fasta ./ppangg_file.tsv -c 40
+
+NEED PPANGGOLIN MSA COMMAND:
+core gene align
+
+
+phylogenetic tree
+...
+profit
+
