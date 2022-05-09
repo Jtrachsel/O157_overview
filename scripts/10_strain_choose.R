@@ -173,7 +173,7 @@ meta %>%
 
 selected_isolates <- 
   meta %>% 
-  filter(FSIS | NARMS)
+  filter(FSIS | NARMS) %>% 
   filter(Year > 2017) %>% 
   filter(PDS_acc %in% selected_SNPs$PDS_acc) %>% 
   mutate(novelty_score=ifelse(is.na(novelty_score), 0,novelty_score), 

@@ -8,7 +8,7 @@ source('./scripts/00_functions.R')
 
 
 ###
-meta <- read_tsv('./data/O157:H7_meta.tsv')
+meta <- read_tsv('./output/O157:H7_meta.tsv')
 
 meta %>%
   group_by(PDS_acc, Year, ag_match, country) %>%

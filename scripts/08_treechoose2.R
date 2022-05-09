@@ -6,14 +6,32 @@ library(pdtools)
 
 source('scripts/00_functions.R')
 
-meta <- read_tsv('./output/05_meta.tsv')
+meta <- read_tsv('./output/O157:H7_meta.tsv')
+tree_dat <- read_tsv('output/tree_reps.tsv') %>% 
+  mutate(asm_acc=representative)
 
+
+### lineages need work ###
+tree_lin <- read_csv('output/tree_reps_lin.csv', skip = 1) %>% 
+  mutate(asm_acc=sub('./data/dan_lin/(.*).fna','\\1',Accession))
+
+tree_lin %>% 
+  group_by(lineage, `LSPA type`) %>%
+  tally() %>% 
+  arrange(desc(n))
+
+
+tree_lin %>%
+  select(`LSPA type`, `foldD-sfmA`, Z5935, yhcG, rtcB, rbsB, `arp-iclR`)
+
+
+###
 
 
 ### read raxml tree ###
 tr <- read.raxml('./RAxML_bipartitionsBranchLabels.small_core')
 
-
+ggtree(tr)
 # hist(tr@phylo$edge.length, breaks = 100)
 
 # which(tr@phylo$edge.length > quantile(tr@phylo$edge.length, probs = .99))
@@ -23,8 +41,98 @@ phylo_dist <- ape::cophenetic.phylo(tr@phylo) %>%
   rownames_to_column(var='asm_acc') %>% 
   pivot_longer(cols=-asm_acc, names_to = 'to', values_to='phydist')
 
-# hist(phylo_dist$phydist)
 
+# attempt to predict lineage based on phylo dists
+to_lins <- tree_lin %>% transmute(to=asm_acc, to_lineage=lineage, to_LSPA=`LSPA type`)
+
+
+# in this block the "to" column is the reference, known lineages to be matched against the unknowns
+closest_known_lineages <- 
+  tree_lin %>%
+  left_join(phylo_dist) %>%  
+  select(asm_acc, to, `LSPA type`, lineage, phydist) %>% 
+  left_join(to_lins) %>% 
+  filter(to_lineage != 'manually assign') %>% 
+  filter(lineage == 'manually assign') %>% 
+  group_by(asm_acc, `LSPA type`) %>% 
+  summarise(min_phy=phydist[which.min(phydist)], 
+            closest_known_lin=to_lineage[which.min(phydist)], 
+            closest_LSPA=to_LSPA[which.min(phydist)], 
+            closest_known_rep=to[which.min(phydist)])
+
+closest_known_lineages %>% arrange((min_phy)) 
+
+LOOK <- 
+  closest_known_lineages %>% 
+  group_by(`LSPA type`, closest_LSPA, closest_known_lin) %>%
+  tally() %>%
+  arrange(desc(n)) %>% 
+  ungroup() %>% 
+  transmute(
+    unknown_LSPA = `LSPA type`, 
+    closest_known_LSPA=closest_LSPA, 
+    closest_known_lin, 
+    number_occurrences=n
+  )
+
+
+
+
+# only one LSPA type has a disagreement about what lineage it should be
+lineage_conflict <- 
+  closest_known_lineages %>% 
+  group_by(`LSPA type`, closest_known_lin) %>%
+  tally() %>%
+  arrange(`LSPA type`) %>% 
+  count(`LSPA type`) %>%
+  filter(n !=1) %>% 
+  pull(`LSPA type`)
+
+
+# the only LSPA type with a conflict has only one vote for lin 1 and 29 votes for lin 2
+all_conflicted <- closest_known_lineages %>% filter(`LSPA type` %in% lineage_conflict) 
+
+# 221213 should probably be lineage 2
+
+unknown_lineage_assignments <- 
+  LOOK %>%
+  group_by(unknown_LSPA) %>% 
+  summarise(pred_lineage=closest_known_lin[which.max(number_occurrences)])
+
+unknown_lineage_assignments
+unknown_lin_vec <- unknown_lineage_assignments$pred_lineage
+names(unknown_lin_vec) <- unknown_lineage_assignments$unknown_LSPA
+
+known_lins <- 
+  tree_lin %>% 
+  filter(lineage != 'manually assign') %>% 
+  select(`LSPA type`, lineage) %>% 
+  unique()
+
+known_lin_vec <- known_lins$lineage
+names(known_lin_vec) <- known_lins$`LSPA type`
+
+all_lin_vec <- c(unknown_lin_vec, known_lin_vec)
+
+# this now has a new column LINEAGE that has the predicted lineage
+# determined the appropriate lineage to assign by finding the closest known lineage
+# as determined by phylogenetic distance from the ML tree
+tree_lin <- 
+  tree_lin %>% 
+  mutate(LINEAGE=all_lin_vec[as.character(`LSPA type`)])
+
+#####
+
+
+tree_dat <-
+  tree_dat %>%
+  left_join(tree_lin) %>%
+  filter(!is.na(lineage))
+
+
+
+
+#######
 cumulative_dists <- 
   phylo_dist %>%
   group_by(asm_acc) %>% 
@@ -83,28 +191,71 @@ PDS_summary <-
   arrange(desc(num_years)) %>% 
   mutate(USDA=ifelse(PDS_acc %in% FSIS_PDSs, 'TRUE', 'FALSE'))
 
+LOOK
+
+tr@phylo
+is.binary(tr@phylo)
+
+tibble(edge_length=tr@phylo$edge.length) %>%
+  ggplot(aes(x=edge_length)) + 
+  geom_histogram(bins=100) +
+  xlim(0,.000002)
 
 
+all(tr@phylo$edge.length > 1e-6)
+min(tr@phylo$edge.length)
 
 
+# should run phyclip with 1.000001e-06 as the value to collapse 
 ###############
 
 tree_data <- 
   tibble(asm_acc=tr@phylo$tip.label) %>%
-  left_join(meta) %>% 
+  left_join(tree_dat) %>% 
   left_join(PDS_summary) %>% 
-  mutate(LABEL=asm_acc)
+  mutate(LABEL=asm_acc, 
+         LABEL2=ifelse(grepl('GCA', LABEL), '', LABEL))
 
-tree_data$lineage
+tree_data$LINEAGE
+tree_data$LABEL2
 
 ggtr <- ggtree(tr) %<+% tree_data
 tree_data$LABEL
 
+library(ggrepel)
+
 ggtr +
-  geom_tippoint(aes(fill=lineage, alpha=Year, size=total_isolates), shape=21) + 
+  geom_tippoint(aes(fill=LINEAGE, alpha=most_recent_year, size=total_isolates), shape=21) + 
+  geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007)
   # geom_point2(aes(subset= FSIS == 'TRUE'),position = position_nudge(x = .00009, y = 0), color='red', size=1) + 
-  geom_text2(aes(subset= !grepl('GCA',LABEL), label=LABEL), nudge_x = .00005, size=2) 
+  # geom_text2(aes(subset= !grepl('GCA',LABEL), label=LABEL), nudge_x = .00005, size=2) 
   # geom_point2(aes(subset= Year == 2021),position = position_nudge(x = .00019, y = 0), color='blue', size=1)
+
+ggsave('output/lineages_tree.jpeg' )
+
+tree_data$hosts_except_human
+#######
+ggtr +
+  geom_tippoint(aes(fill=hosts_except_human, alpha=most_recent_year, size=total_isolates), shape=21) + 
+  geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007)
+#####
+
+
+cp <- collapse(ggtr, node=c(1081))
+cp <- collapse(cp, node=c(873))
+cp <- collapse(cp, node=c(1436))
+
+cp + 
+  geom_point2(aes(subset=(node %in% c(1081,873, 1436 ))), size=5, shape=23, fill="steelblue")+
+  geom_tippoint(aes(fill=lineage, alpha=most_recent_year, size=total_isolates), shape=21) + 
+  geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007)
+
+
+
+
+ggsave('output/collapse_lineages_tree.jpeg' )
+
+
 
 ggtr + geom_nodelab(aes(label=node))
 # zoomClade(ggtr, node = 528)
@@ -129,10 +280,10 @@ ggtr + geom_text(aes(label=node), hjust=.9 , size=3, color='blue') +
 
 ###
 # 
-weird_clade <- ape::extract.clade(tr@phylo, node = 706)
+# weird_clade <- ape::extract.clade(tr@phylo, node = 706)
 # 
-remove_these <- weird_clade$tip.label
-tr@phylo$tip.label[!(tr@phylo$tip.label %in% remove_these)]
+# remove_these <- weird_clade$tip.label
+# tr@phylo$tip.label[!(tr@phylo$tip.label %in% remove_these)]
 
 
 #### make new tree reps without strange outliers ###

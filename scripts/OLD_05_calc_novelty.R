@@ -46,7 +46,7 @@ selection_orders <-
            selected_order=1:length(VECTOR))
   }
 
-
+### need to calculate derep sets first.  Dont have a script for that yet.
 derep_sets <- read_rds('output/derep_sets.rds')
 
 novelty_info <-
