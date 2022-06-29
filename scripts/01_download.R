@@ -32,7 +32,7 @@ download_gbk_assembly_summary('./data/assembly_summary.txt')
 
 # wrap this in function
 # designed to clean up old versions of PDG metadata
-
+# get_PDG_version('./data/')
 
 most_recent_PDG <- 
   tibble(files=list.files('./data/', 'PDG.*.amr.metadata.tsv'), 
@@ -283,10 +283,6 @@ host_dat <- stx_meta %>% extract_consensus_ag_species()
 agency_dat <- stx_meta %>% extract_collection_agency()
 
 
-# talking about need for a 'business' translator
-# when you put a data scientist directly in contact with a business person, 
-# lots of things will happen and none of it is good
-
 stx_meta <- 
   stx_meta %>% 
   # left_join(year_dat) %>% # commented out because I already joined in earlier
@@ -317,6 +313,12 @@ stx_meta <-
 #   ggtitle('genomes containing stx1, stx2, or both')
 
 
+stx_meta %>% count(asm_acc == 'NULL')
+
+stx_meta <- stx_meta %>% filter(asm_acc != 'NULL')
+
+
+
 stx_meta %>% write_tsv('./output/all_stx_metadata.tsv')
 
 # 
@@ -344,6 +346,9 @@ stx_meta %>% write_tsv('./output/all_stx_metadata.tsv')
 
 # system('mkdir ./data/genomes/')
 # I downloaded all 43000+ genomes and used ectyper on them
+
+# stx_meta <- stx_meta %>% filter(asm_acc != 'NULL')
+
 stx_meta <- 
   stx_meta %>%
   make_ftp_paths('./data/assembly_summary.txt') %>% 
@@ -352,7 +357,7 @@ stx_meta <-
   # download_genomes()
 
 existing_assems <- 
-  c(list.files('data/genomes/O157', 'GCA'), list.files('data/genomes/non_O157/', 'GCA'))
+  c(list.files('data/O157', 'GCA'), list.files('data/non_O157/', 'GCA'))
 # list.files('data', 'GCA', recursive = T)
 ex_asm_accs <- sub('.fna','',existing_assems)
 

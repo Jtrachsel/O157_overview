@@ -99,8 +99,8 @@ set.seed(7)
 # hist(vs_sakai$ANI)
 
 # when I plotted this tree I found that maybe 'GCA_011970025.1' would be a good outgroup
-###
 
+### Download reference genomes
 
 download.file('https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/008/865/GCF_000008865.2_ASM886v2/GCF_000008865.2_ASM886v2_genomic.fna.gz', 
               destfile = 'data/O157/Sakai.fna.gz')
@@ -110,18 +110,18 @@ download.file('https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/013/168/095/GCF_0131
 
 download.file('https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/022/225/GCF_000022225.1_ASM2222v1/GCF_000022225.1_ASM2222v1_genomic.fna.gz',
               destfile = 'data/O157/TW14359.fna.gz')
-# incomplete_genomes <- grep_vector(pattern_vector = tree_data$representative, list.files('./data/genomes/O157', full.names = T))
-# complete_genomes <- grep('GCA_', list.files('./data/genomes/O157', full.names = T), invert = T, value = T)
 
-system('gunzip data/O157/*gz')
-# 
-# build_ppanggolin_file_fastas(complete_genome_paths = complete_genomes, 
-#                              incomplete_genome_paths = incomplete_genomes) %>% 
-#   write_tsv('overview_tree_ppanggolin.tsv', col_names = FALSE)
+system('gunzip -f data/O157/*gz')
+
 #########
 
 # SET_SEED
 set.seed(7)
+
+library(lubridate)
+
+
+
 tree_data_small <- 
   meta %>%
   filter(Year > 2017) %>%
@@ -130,13 +130,10 @@ tree_data_small <-
   summarise(num_genomes=n(), 
             representative=asm_acc[sample(1:n(), 1)]) %>%
   arrange(desc(num_genomes)) %>% 
-  write_tsv('output/tree_reps.tsv')
-
-tree_data_og <- read_tsv('./output/tree_reps.tsv')
-tree_data_og$representative == tree_data_small$representative
+  write_tsv(paste0('output/tree_reps_',today(),'.tsv'))
 
 
-# this probably doesnt get all the needed genomes
+# this probably doesnt get all the needed genomes, no it was because they werent moved into the O157 folder
 incomplete_genomes <- grep_vector(pattern_vector = tree_data_small$representative, list.files('./data/O157', full.names = T))
 complete_genomes <- grep('GCA_', list.files('./data/O157', full.names = T), invert = T, value = T)
 
@@ -155,13 +152,13 @@ MISSING_REPS <-
 
 MISSING_REPS 
 
-
+tree_data_small %>% filter(representative == 'GCA_011970025.1')
 
 #
 
 build_ppanggolin_file_fastas(complete_genome_paths = complete_genomes, 
                              incomplete_genome_paths = incomplete_genomes) %>% 
-  write_tsv('small_overview_tree_ppanggolin.tsv', col_names = FALSE)
+  write_tsv(paste0('overview_tree_',today(),'_ppanggolin.tsv'), col_names = FALSE)
 
 
 
@@ -178,6 +175,4 @@ copied <- file.copy(from = dan_lin_copy$PATH, to = dan_lin_copy$NEW_PATH, overwr
 
 
 all(copied)
-
-
 

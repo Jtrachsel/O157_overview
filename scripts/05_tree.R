@@ -117,12 +117,25 @@ tree_lin <-
   tree_lin %>% 
   mutate(LINEAGE=all_lin_vec[as.character(`LSPA type`)])
 
+tree_lin %>% 
+  select(asm_acc,`foldD-sfmA`, Z5935, yhcG, rtcB, rbsB, `arp-iclR`, `LSPA type`, lineage, LINEAGE) %>% 
+  filter(lineage == 'manually assign') %>% 
+  write_tsv('output/manual_lins_for_dan.tsv')
+
 #####
 
+phyclip_clusts <- read_tsv('phyclip_clusts/cluster_optimal_parameter_cs6_fdr0.3_gam4.5_sol0_f0_zero-branch-length-collapsed_RAxML_bestTree.txt') %>% 
+  transmute(asm_acc=TAXA, 
+            phyclip_clust=CLUSTER, 
+            CLUST=fct_lump_n(f = as.factor(CLUSTER), n = 9))
+
+# phyclip_clusts %>% group_by(CLUSTER) %>% tally() %>% arrange(desc(n))
+###
 tree_dat <-
   tree_dat %>%
   left_join(tree_lin) %>%
-  filter(!is.na(lineage))
+  filter(!is.na(lineage)) %>% 
+  left_join(phyclip_clusts)
 
 
 
@@ -168,18 +181,19 @@ FSIS_PDSs <- FSIS_USDA %>% pull(PDS_acc) %>% unique()
 PDS_summary <- 
   meta %>% 
   filter(!is.na(PDS_acc)) %>% 
-  group_by(PDS_acc, Year, country, ag_match) %>%
-  tally() %>%
-  arrange(desc(n)) %>%
-  ungroup() %>% 
+  # group_by(PDS_acc, Year, country, ag_match, continent) %>%
+  # tally() %>%
+  # arrange(desc(n)) %>%
+  # ungroup() %>% 
   group_by(PDS_acc) %>% 
   # nest()
   summarise(num_years=length(unique(Year)),
-            total_isolates=sum(n),
+            total_isolates=n(),
             most_recent_year=unique(Year[which.max(Year)]), 
-            most_recent_year_num=sum(n[which.max(Year)]), 
-            previous_year_num = sum(n[which(Year == Year[which.max(Year)] - 1)]),
+            # most_recent_year_num=sum(n[which.max(Year)]), 
+            # previous_year_num = sum(n[which(Year == Year[which.max(Year)] - 1)]),
             all_ag_matches=paste(unique(sort(ag_match)), collapse = '_'),
+            continents=paste(unique(sort(continent)), collapse = '_'),
             .groups='drop') %>%
   mutate(hosts_except_human=sub('Human', '', all_ag_matches), 
          hosts_except_human=sub('__','_',hosts_except_human), 
@@ -220,16 +234,60 @@ tree_data$LABEL
 
 library(ggrepel)
 
+
+
+
+cbp1 <- c(LI="#009E73", `LI/II`="#E69F00", LII="#0072B2")
+
+cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+# 
+# 
+# cbp1 <- c(None="#999999", Both="#E69F00", STX1="#56B4E9", STX2="#009E73",
+#           "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+# 
+# cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
+#           "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+
+
+
 ggtr +
-  geom_tippoint(aes(fill=LINEAGE, alpha=most_recent_year, size=total_isolates), shape=21) + 
+  geom_tippoint(aes(fill=lineage, size=total_isolates), shape=21) + 
   geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007)
+# ggsave('output/lineage_tree_not_fixed.jpeg')
+
+ggtr +
+  geom_tippoint(aes(fill=LINEAGE, size=total_isolates), shape=21) + 
+  geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007) + 
+  scale_fill_manual(values = cbp1)+
+  guides(fill = guide_legend(override.aes = list(size = 5)))
   # geom_point2(aes(subset= FSIS == 'TRUE'),position = position_nudge(x = .00009, y = 0), color='red', size=1) + 
   # geom_text2(aes(subset= !grepl('GCA',LABEL), label=LABEL), nudge_x = .00005, size=2) 
   # geom_point2(aes(subset= Year == 2021),position = position_nudge(x = .00019, y = 0), color='blue', size=1)
 
-ggsave('output/lineages_tree.jpeg' )
+ggsave('output/lineages_tree.jpeg', bg = 'white' )
 
-tree_data$hosts_except_human
+
+ggtr +
+  geom_tippoint(aes(fill=CLUST, size=total_isolates), shape=21) + 
+  geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007)
+
+ggsave('output/phyclip_tree.jpeg' )
+
+
+tree_data %>% filter(is.na(CLUST))
+
+tree_data %>%
+  group_by(CLUST, continents) %>%
+  tally() %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>% 
+  group_by(CLUST) %>% 
+  slice_head(n=1)
+
+
 #######
 ggtr +
   geom_tippoint(aes(fill=hosts_except_human, alpha=most_recent_year, size=total_isolates), shape=21) + 
@@ -242,16 +300,34 @@ cp <- collapse(cp, node=c(873))
 cp <- collapse(cp, node=c(1436))
 
 cp + 
+  geom_point2(aes(subset=(node %in% c(1081,873, 1436 ))), size=5, shape=23, fill="purple")+
+  geom_tippoint(aes(fill=LINEAGE, size=total_isolates), shape=21) + 
+  geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007)+
+  scale_fill_manual(values = cbp1)+
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+
+
+
+
+ggsave('output/collapse_lineages_tree.jpeg', bg='white' )
+
+
+cp + 
   geom_point2(aes(subset=(node %in% c(1081,873, 1436 ))), size=5, shape=23, fill="steelblue")+
-  geom_tippoint(aes(fill=LINEAGE, alpha=most_recent_year, size=total_isolates), shape=21) + 
+  geom_tippoint(aes(fill=CLUST, alpha=most_recent_year, size=total_isolates), shape=21) + 
   geom_text_repel(aes(label=LABEL2), max.overlaps = 10000, size=3, nudge_x = .00007)
 
+######
+
+# log linear?
 
 
-
-ggsave('output/collapse_lineages_tree.jpeg' )
-
-
+seniors <- array(data = c(911, 44, 538, 456, 3, 2, 43, 279), 
+                 dim = c(2,2,2), 
+                 dimnames = list("cigarette" = c("yes","no"),
+                                 "marijuana" = c("yes","no"),
+                                 "alcohol" = c("yes","no")))
 
 # ggtr + geom_nodelab(aes(label=node))
 # zoomClade(ggtr, node = 528)

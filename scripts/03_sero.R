@@ -29,7 +29,7 @@ meta <-
   read_tsv('./output/all_stx_metadata.tsv') %>% 
   left_join(SERO)
 
-meta <- meta %>% filter(!is.na(PDS_acc))
+# meta <- meta %>% filter(!is.na(PDS_acc))
 
 O157_PDS <- meta %>% filter(Serotype == 'O157:H7') %>% pull(PDS_acc) %>% unique()
 
@@ -41,11 +41,28 @@ meta %>%
   arrange(desc(n)) %>% 
   count(PDS_acc) %>% arrange(desc(n))
 
-
+meta %>% filter(is.na(STX))
 # meta %>% filter(PDS_acc == 'PDS000004368.66') %>% select(Serotype)
 # meta %>% filter(!(asm_acc %in% sero$Name)) %>% pull(asm_acc)
 # sero %>% filter(!(Name %in% meta$asm_acc)) %>% pull(Name)
 # sero %>% filter(!(asm_acc %in% meta$asm_acc)) %>% pull(asm_acc)
+
+meta %>% 
+  # select(asm_acc, Serotype) %>% 
+  # left_join(meta) %>%
+  mutate(serotype=fct_lump((Serotype), n = 10)) %>%
+  group_by(serotype, STX) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  # mutate(serotype2=fct_inorder(serotype)) %>%
+  ggplot(aes(y=fct_rev(fct_inorder(serotype)), x=n)) + 
+  geom_col(aes(fill=STX)) + 
+  ggtitle('serotypes of stx containing E.coli') + 
+  theme_cowplot() + 
+  xlab('number of genomes') + 
+  background_grid()
+
 
 sero %>% 
   select(asm_acc, Serotype) %>% 
@@ -84,11 +101,23 @@ sero %>%
 
 # meta$asm_acc
 # contains all SNP clusters that contain some O157:H7
+meta <- meta %>% filter(!is.na(PDS_acc))
+
 O157_H7 <- 
   meta %>%
+  filter(!is.na(PDS_acc)) %>% 
   filter(asm_acc != 'NULL') %>% 
-  filter(PDS_acc %in% O157_PDS) %>%
+  filter(PDS_acc %in% O157_PDS)
+
+state_data <- O157_H7 %>% filter(country == 'USA') %>% extract_state()
+
+O157_H7 <- 
+  O157_H7 %>%
+  left_join(state_data) %>%
   write_tsv('./output/O157:H7_meta.tsv')
+
+
+
 
 # O157_H7 %>% 
 #   pull(asm_acc) %>%
