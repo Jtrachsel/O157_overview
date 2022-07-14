@@ -219,6 +219,9 @@ min(tr@phylo$edge.length)
 # should run phyclip with 1.000001e-06 as the value to collapse 
 ###############
 
+grep('GCA_',tree_data$asm_acc, invert = T) %>% length()
+grep('GCA_',tree_data$asm_acc, invert = F) %>% length()
+
 tree_data <- 
   tibble(asm_acc=tr@phylo$tip.label) %>%
   left_join(tree_dat) %>% 
